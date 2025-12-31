@@ -117,16 +117,27 @@ async function startBrowser() {
     await page.goto(DASHBOARD_URL, { waitUntil: 'networkidle2' });
     log('Page loaded.', 'SUCCESS');
     
-    // Optional: Scroll down to focus on the relevant part of the dashboard
-    // We can scroll by a fixed pixel amount or to a specific element.
-    // Let's scroll down 200 pixels as a starting point.
+    // Aggressive CSS Injection to fix layout
+    await page.addStyleTag({ content: `
+        body { 
+            overflow: hidden !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            /* Zoom in slightly to cut off edges if needed */
+            transform: scale(1.02);
+            transform-origin: center top;
+        }
+        /* Hide scrollbars completely */
+        ::-webkit-scrollbar { 
+            display: none !important; 
+        }
+    `});
+
+    // Scroll down 
     await page.evaluate(() => {
-        window.scrollBy(0, 150); // Adjust this value to scroll more or less
+        window.scrollBy(0, 150);
     });
     log('Scrolled down to relevant content.', 'INFO');
-    
-    // Optional: Hide scrollbars or extra elements if needed
-    await page.addStyleTag({ content: 'body { overflow: hidden; }' });
 }
 
 function startStream() {
