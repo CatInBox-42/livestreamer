@@ -44,24 +44,26 @@ async function startXvfb() {
     // Start PulseAudio
     log('Starting PulseAudio...', 'INFO');
     try {
-        // Kill any existing instance
+        // Kill existing and start with flags for root/docker
         spawn('pulseaudio', ['-k']);
+        const pa = spawn('pulseaudio', [
+            '-D', 
+            '--exit-idle-time=-1', 
+            '--disallow-exit', 
+            '--system=false',
+            '--daemonize',
+            '--log-target=stderr'
+        ]);
         
-        // Start new instance in background
-        // We load module-virtual-sink to have a sink to output to, and monitor
-        const pa = spawn('pulseaudio', ['-D', '--exit-idle-time=-1']);
-        pa.on('error', (err) => log(`PulseAudio error: ${err.message}`, 'WARN'));
+        await new Promise(r => setTimeout(r, 2000));
         
-        // Give PA a moment
-        await new Promise(r => setTimeout(r, 1000));
+        // Create Virtual Sink
+        spawn('pactl', ['load-module', 'module-null-sink', 'sink_name=VirtualSink', 'sink_properties=device.description=VirtualSink']);
+        await new Promise(r => setTimeout(r, 500));
         
-        // Create a null sink to capture audio from
-        // This acts as a virtual speaker that the browser will play into
-        const pacmd = spawn('pactl', ['load-module', 'module-null-sink', 'sink_name=VirtualSink', 'sink_properties=device.description=VirtualSink']);
-        pacmd.stderr.on('data', d => log(`pactl stderr: ${d}`, 'DEBUG'));
-        
-        // Set this as default sink so Chrome uses it automatically
+        // Set as default
         spawn('pactl', ['set-default-sink', 'VirtualSink']);
+        log('PulseAudio VirtualSink initialized.', 'SUCCESS');
         
     } catch (e) {
         log(`PulseAudio setup failed: ${e.message}`, 'WARN');
@@ -91,21 +93,25 @@ async function startBrowser() {
             `--window-size=${SCREEN_WIDTH},${SCREEN_HEIGHT}`,
             '--autoplay-policy=no-user-gesture-required',
             '--display=' + DISPLAY_NUM,
-            '--incognito', // Force incognito to avoid caching
-            '--disable-gpu', // Software rendering is often more stable in headless
-            '--disable-dev-shm-usage' // Avoid shared memory issues in Docker
+            '--incognito',
+            // GPU & Rendering fixes for video in Docker
+            '--disable-gpu',              // Disable hardware acceleration
+            '--disable-software-rasterizer', // Sometimes needed with Xvfb
+            '--disable-dev-shm-usage',    // Memory fix
+            '--disable-accelerated-2d-canvas',
+            '--disable-accelerated-video-decode', // Force software decoding
+            '--disable-gl-drawing-for-tests'
         ]
     });
 
-    // Use createIncognitoBrowserContext if --incognito arg isn't enough for some reason,
-    // but usually launching with --incognito is simplest. 
-    // Actually, puppeteer.launch returns a browser. If we want strict incognito we can do:
-    // const context = await browser.createIncognitoBrowserContext();
-    // const page = await context.newPage();
-    
-    // For now, let's stick to the standard page but ensure cache is disabled
     const page = await browser.newPage();
-    await page.setCacheEnabled(false); // Disable cache for this session
+    await page.setCacheEnabled(false);
+    
+    // Spoof User Agent to look like a standard Windows PC
+    // This often forces websites to serve standard MP4/H.264 video instead of weird formats
+    await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
+
+    await page.setViewport({ width: SCREEN_WIDTH, height: SCREEN_HEIGHT });
     await page.setViewport({ width: SCREEN_WIDTH, height: SCREEN_HEIGHT });
     
     // Go to the URL
@@ -131,11 +137,9 @@ function startStream() {
             '-draw_mouse 0' // Hide mouse cursor
         ])
         // Input: Grab PulseAudio monitor source
-        // We capture from the monitor of our virtual sink
-        .input('default') 
+        // We use the monitor of our virtual sink explicitly
+        .input('VirtualSink.monitor') 
         .inputFormat('pulse')
-        // .input('anullsrc') // Fallback if pulse fails
-        // .inputFormat('lavfi')
         
         // Output options
         .outputOptions([
