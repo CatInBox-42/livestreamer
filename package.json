@@ -1,0 +1,19 @@
+{
+  "name": "cat-in-box-streamer",
+  "version": "1.0.0",
+  "description": "Headless RTMP streamer for Cat in Box project",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "nodemon index.js"
+  },
+  "dependencies": {
+    "fluent-ffmpeg": "^2.1.2",
+    "dotenv": "^16.3.1",
+    "puppeteer": "^21.5.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
+

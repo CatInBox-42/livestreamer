@@ -1,0 +1,33 @@
+# Dependencies
+node_modules/
+npm-debug.log
+yarn-error.log
+
+# Environment variables (BELANGRIJK: nooit committen)
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Operating System files
+.DS_Store
+Thumbs.db
+
+# Docker
+docker-compose.override.yml
+
+# Build outputs (indien van toepassing)
+dist/
+build/
+
+# Logs
+logs/
+*.log
+
+# Editor directories
+.idea/
+.vscode/
+*.swp
+*.swo
+
