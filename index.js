@@ -89,18 +89,17 @@ async function startBrowser() {
         args: [
             '--no-sandbox',
             '--disable-setuid-sandbox',
-            '--start-fullscreen',
-            `--window-size=${SCREEN_WIDTH},${SCREEN_HEIGHT}`,
-            '--autoplay-policy=no-user-gesture-required',
             '--display=' + DISPLAY_NUM,
             '--incognito',
-            // GPU & Rendering fixes for video in Docker
-            '--disable-gpu',              // Disable hardware acceleration
-            '--disable-software-rasterizer', // Sometimes needed with Xvfb
-            '--disable-dev-shm-usage',    // Memory fix
+            '--kiosk', // Fullscreen mode without any browser UI (no tabs, no address bar)
+            '--disable-infobars', // Hides the "Chrome is being controlled..." message
+            '--window-size=' + SCREEN_WIDTH + ',' + SCREEN_HEIGHT,
+            '--autoplay-policy=no-user-gesture-required',
+            '--disable-gpu',
+            '--disable-software-rasterizer',
+            '--disable-dev-shm-usage',
             '--disable-accelerated-2d-canvas',
-            '--disable-accelerated-video-decode', // Force software decoding
-            '--disable-gl-drawing-for-tests'
+            '--disable-accelerated-video-decode'
         ]
     });
 
@@ -117,6 +116,14 @@ async function startBrowser() {
     // Go to the URL
     await page.goto(DASHBOARD_URL, { waitUntil: 'networkidle2' });
     log('Page loaded.', 'SUCCESS');
+    
+    // Optional: Scroll down to focus on the relevant part of the dashboard
+    // We can scroll by a fixed pixel amount or to a specific element.
+    // Let's scroll down 200 pixels as a starting point.
+    await page.evaluate(() => {
+        window.scrollBy(0, 150); // Adjust this value to scroll more or less
+    });
+    log('Scrolled down to relevant content.', 'INFO');
     
     // Optional: Hide scrollbars or extra elements if needed
     await page.addStyleTag({ content: 'body { overflow: hidden; }' });
