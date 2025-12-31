@@ -143,6 +143,13 @@ function startStream() {
             '-framerate 30',
             '-draw_mouse 0' // Hide mouse cursor
         ])
+        // Use video filter to crop out the browser UI (URL bar, tabs)
+        // Crop width=1280, height=640 (remove top 80px), start at x=0, y=80
+        .complexFilter([
+            `crop=w=${SCREEN_WIDTH}:h=${SCREEN_HEIGHT - 80}:x=0:y=80[cropped]`,
+            `[cropped]scale=${SCREEN_WIDTH}:${SCREEN_HEIGHT}[outv]`
+        ], ['outv'])
+        
         // Input: Grab PulseAudio monitor source
         // We use the monitor of our virtual sink explicitly
         .input('VirtualSink.monitor') 
