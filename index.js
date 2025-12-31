@@ -82,19 +82,30 @@ async function startBrowser() {
     log(`Launching Puppeteer for ${DASHBOARD_URL}...`, 'INFO');
     
     browser = await puppeteer.launch({
-        headless: false, // Important: must be false to render to Xvfb
-        defaultViewport: null, // Let the window size dictate viewport
+        headless: false,
+        defaultViewport: null,
         args: [
             '--no-sandbox',
             '--disable-setuid-sandbox',
             '--start-fullscreen',
             `--window-size=${SCREEN_WIDTH},${SCREEN_HEIGHT}`,
             '--autoplay-policy=no-user-gesture-required',
-            '--display=' + DISPLAY_NUM
+            '--display=' + DISPLAY_NUM,
+            '--incognito', // Force incognito to avoid caching
+            '--disable-gpu', // Software rendering is often more stable in headless
+            '--disable-dev-shm-usage' // Avoid shared memory issues in Docker
         ]
     });
 
+    // Use createIncognitoBrowserContext if --incognito arg isn't enough for some reason,
+    // but usually launching with --incognito is simplest. 
+    // Actually, puppeteer.launch returns a browser. If we want strict incognito we can do:
+    // const context = await browser.createIncognitoBrowserContext();
+    // const page = await context.newPage();
+    
+    // For now, let's stick to the standard page but ensure cache is disabled
     const page = await browser.newPage();
+    await page.setCacheEnabled(false); // Disable cache for this session
     await page.setViewport({ width: SCREEN_WIDTH, height: SCREEN_HEIGHT });
     
     // Go to the URL
@@ -129,11 +140,12 @@ function startStream() {
         // Output options
         .outputOptions([
             '-c:v', 'libx264',
-            '-preset', 'veryfast',
-            '-maxrate', '3000k',
-            '-bufsize', '6000k',
+            '-preset', 'veryfast', // 'ultrafast' is faster but uses more bandwidth. 'veryfast' is good balance.
+            '-tune', 'zerolatency', // Optimize for low latency streaming
+            '-maxrate', '2500k',  // Lower bitrate slightly to ensure stability
+            '-bufsize', '5000k',
             '-pix_fmt', 'yuv420p',
-            '-g', '60',
+            '-g', '60', // Keyframe interval (2s at 30fps)
             '-c:a', 'aac',
             '-b:a', '128k',
             '-ar', '44100',
