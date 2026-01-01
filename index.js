@@ -156,6 +156,13 @@ async function startBrowser() {
     await page.goto(DASHBOARD_URL, { waitUntil: 'networkidle2' });
     log('Page loaded.', 'SUCCESS');
 
+    // Do a HARD refresh to bypass any cache (like Ctrl+F5)
+    await page.evaluate(() => {
+        location.reload(true); // true = force reload from server
+    });
+    await page.waitForNavigation({ waitUntil: 'networkidle2' });
+    log('Hard refresh completed.', 'SUCCESS');
+
     // Wait a bit for any videos to initialize, then click to trigger audio
     await new Promise(r => setTimeout(r, 2000));
     
