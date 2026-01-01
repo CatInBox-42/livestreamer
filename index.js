@@ -31,9 +31,9 @@ const DISPLAY_NUM = ':99';
 
 // Crop settings (adjust these as needed)
 const CROP_TOP = 180;     // Pixels to remove from top
-const CROP_BOTTOM = 120;  // Pixels to remove from bottom
+const CROP_BOTTOM = 150;  // Pixels to remove from bottom (was 120)
 const CROP_LEFT = 15;     // Pixels to remove from left
-const SCROLL_DOWN = 270;  // Pixels to scroll down on page
+const SCROLL_DOWN = 240;  // Pixels to scroll down on page (was 270)
 
 let ffmpegCommand = null;
 let browser = null;
