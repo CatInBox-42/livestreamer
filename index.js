@@ -25,14 +25,14 @@ validateConfig();
 const FULL_RTMP_URL = RTMP_URL.endsWith('/') ? `${RTMP_URL}${RTMP_KEY}` : `${RTMP_URL}/${RTMP_KEY}`;
 
 const RECONNECT_DELAY = 5000;
-const SCREEN_WIDTH = 1920;   // Laptop/Desktop resolution
-const SCREEN_HEIGHT = 1080;  // Full HD
+const SCREEN_WIDTH = 1600;   // Slightly smaller = zoomed in effect
+const SCREEN_HEIGHT = 900;   // 16:9 aspect ratio
 const DISPLAY_NUM = ':99';
 
 // Crop settings (adjust these as needed)
-const CROP_TOP = 250;    // Pixels to remove from top (increased for higher res)
-const CROP_LEFT = 20;    // Pixels to remove from left
-const SCROLL_DOWN = 400; // Pixels to scroll down on page (increased for higher res)
+const CROP_TOP = 180;    // Reduced to show more of the top (card headers)
+const CROP_LEFT = 15;    // Pixels to remove from left
+const SCROLL_DOWN = 300; // Reduced to show more of the top
 
 let ffmpegCommand = null;
 let browser = null;
