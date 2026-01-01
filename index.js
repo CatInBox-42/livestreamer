@@ -25,14 +25,15 @@ validateConfig();
 const FULL_RTMP_URL = RTMP_URL.endsWith('/') ? `${RTMP_URL}${RTMP_KEY}` : `${RTMP_URL}/${RTMP_KEY}`;
 
 const RECONNECT_DELAY = 5000;
-const SCREEN_WIDTH = 1600;   // Slightly smaller = zoomed in effect
+const SCREEN_WIDTH = 1500;   // Slightly narrower
 const SCREEN_HEIGHT = 900;   // 16:9 aspect ratio
 const DISPLAY_NUM = ':99';
 
 // Crop settings (adjust these as needed)
-const CROP_TOP = 180;    // Reduced to show more of the top (card headers)
-const CROP_LEFT = 15;    // Pixels to remove from left
-const SCROLL_DOWN = 300; // Reduced to show more of the top
+const CROP_TOP = 180;     // Pixels to remove from top
+const CROP_BOTTOM = 120;  // Pixels to remove from bottom
+const CROP_LEFT = 15;     // Pixels to remove from left
+const SCROLL_DOWN = 270;  // Pixels to scroll down on page
 
 let ffmpegCommand = null;
 let browser = null;
@@ -200,7 +201,7 @@ function startStream() {
 
     // Calculate crop dimensions
     const cropWidth = SCREEN_WIDTH - CROP_LEFT;
-    const cropHeight = SCREEN_HEIGHT - CROP_TOP;
+    const cropHeight = SCREEN_HEIGHT - CROP_TOP - CROP_BOTTOM;
     const cropFilter = `crop=${cropWidth}:${cropHeight}:${CROP_LEFT}:${CROP_TOP},scale=${SCREEN_WIDTH}:${SCREEN_HEIGHT}`;
 
     ffmpegCommand = ffmpeg()
