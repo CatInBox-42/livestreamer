@@ -105,6 +105,9 @@ async function startBrowser() {
     const pages = await browser.pages();
     const page = pages.length > 0 ? pages[0] : await browser.newPage();
     
+    // Capture browser console logs to debug audio issues
+    page.on('console', msg => log('BROWSER LOG: ' + msg.text(), 'DEBUG'));
+    
     await page.setCacheEnabled(false);
     
     // No User Agent spoofing (back to Linux default for stability)
