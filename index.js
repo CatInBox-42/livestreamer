@@ -116,6 +116,15 @@ async function startBrowser() {
     // Go to the URL
     await page.goto(DASHBOARD_URL, { waitUntil: 'networkidle2' });
     log('Page loaded.', 'SUCCESS');
+
+    // CLICK to ensure audio starts (Autoplay policy often requires interaction)
+    try {
+        await new Promise(r => setTimeout(r, 2000)); // Wait a bit for video to load
+        await page.mouse.click(SCREEN_WIDTH / 2, SCREEN_HEIGHT / 2);
+        log('Clicked center screen to trigger audio.', 'INFO');
+    } catch (e) {
+        log('Click failed: ' + e.message, 'WARN');
+    }
     
     // Aggressive CSS Injection to fix layout
     await page.addStyleTag({ content: `
@@ -123,8 +132,8 @@ async function startBrowser() {
             overflow: hidden !important;
             margin: 0 !important;
             padding: 0 !important;
-            /* Zoom in slightly to cut off edges if needed */
-            transform: scale(1.02);
+            /* Zoom out slightly (90%) to fit more content */
+            transform: scale(0.9);
             transform-origin: center top;
         }
         /* Hide scrollbars completely */
@@ -135,7 +144,7 @@ async function startBrowser() {
 
     // Scroll down 
     await page.evaluate(() => {
-        window.scrollBy(0, 200);
+        window.scrollBy(0, 250);
     });
     log('Scrolled down to relevant content.', 'INFO');
 }
@@ -155,9 +164,9 @@ function startStream() {
             '-draw_mouse 0' // Hide mouse cursor
         ])
         // Use video filter to crop out the browser UI (URL bar, tabs)
-        // Crop width=1280, height=615 (remove top 105px), start at x=0, y=105
+        // Crop width=1280, height=590 (remove top 130px), start at x=0, y=130
         .complexFilter([
-            `crop=w=${SCREEN_WIDTH}:h=${SCREEN_HEIGHT - 105}:x=0:y=105[cropped]`,
+            `crop=w=${SCREEN_WIDTH}:h=${SCREEN_HEIGHT - 130}:x=0:y=130[cropped]`,
             `[cropped]scale=${SCREEN_WIDTH}:${SCREEN_HEIGHT}[outv]`
         ], ['outv'])
         
