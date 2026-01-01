@@ -1,7 +1,7 @@
 require('dotenv').config();
 const ffmpeg = require('fluent-ffmpeg');
 const puppeteer = require('puppeteer');
-const { spawn } = require('child_process');
+const { spawn, execSync } = require('child_process');
 
 // Configuration
 const DASHBOARD_URL = process.env.WEBSITE_URL;
@@ -29,6 +29,11 @@ const SCREEN_WIDTH = 1280;
 const SCREEN_HEIGHT = 720;
 const DISPLAY_NUM = ':99';
 
+// Crop settings (adjust these as needed)
+const CROP_TOP = 180;    // Pixels to remove from top
+const CROP_LEFT = 10;    // Pixels to remove from left
+const SCROLL_DOWN = 360; // Pixels to scroll down on page
+
 let ffmpegCommand = null;
 let browser = null;
 let xvfbProcess = null;
@@ -40,44 +45,75 @@ function log(message, type = 'INFO') {
 
 async function startXvfb() {
     log('Starting Xvfb...', 'INFO');
-    // Start Xvfb on display :99 with 1280x720 resolution and 24-bit color
-    // Start PulseAudio
+    
+    // Start PulseAudio FIRST (before Xvfb)
     log('Starting PulseAudio...', 'INFO');
     try {
-        // Kill existing and start with flags for root/docker
-        spawn('pulseaudio', ['-k']);
-        spawn('pulseaudio', [
-            '-D', 
-            '--exit-idle-time=-1', 
-            '--disallow-exit', 
-            '--system=false',
-            '--daemonize',
-            '--log-target=stderr'
-        ]);
+        // Kill any existing PulseAudio
+        try {
+            execSync('pulseaudio -k 2>/dev/null || true');
+        } catch (e) {
+            // Ignore if pulseaudio wasn't running
+        }
         
-        await new Promise(r => setTimeout(r, 2000));
-        
-        // Create Virtual Sink
-        spawn('pactl', ['load-module', 'module-null-sink', 'sink_name=VirtualSink', 'sink_properties=device.description=VirtualSink']);
+        // Wait a moment
         await new Promise(r => setTimeout(r, 500));
         
-        // Set as default
-        spawn('pactl', ['set-default-sink', 'VirtualSink']);
+        // Start PulseAudio daemon
+        const pa = spawn('pulseaudio', [
+            '-D',                    // Daemonize
+            '--exit-idle-time=-1',   // Never exit
+            '--disallow-exit',       // Don't allow exit
+            '--system=false',        // User mode
+        ]);
+        
+        pa.on('error', (err) => log(`PulseAudio spawn error: ${err.message}`, 'ERROR'));
+        
+        // Wait for PulseAudio to fully start
+        await new Promise(r => setTimeout(r, 2000));
+        
+        // Create Virtual Sink for capturing browser audio
+        try {
+            execSync('pactl load-module module-null-sink sink_name=VirtualSink sink_properties=device.description=VirtualSink');
+            log('Created VirtualSink', 'SUCCESS');
+        } catch (e) {
+            log('VirtualSink may already exist: ' + e.message, 'WARN');
+        }
+        
+        await new Promise(r => setTimeout(r, 500));
+        
+        // Set VirtualSink as default so Chrome uses it
+        try {
+            execSync('pactl set-default-sink VirtualSink');
+            execSync('pactl set-sink-mute VirtualSink 0');
+            execSync('pactl set-sink-volume VirtualSink 100%');
+            log('Set VirtualSink as default with 100% volume', 'SUCCESS');
+        } catch (e) {
+            log('Failed to set default sink: ' + e.message, 'WARN');
+        }
+        
+        // List sinks to verify (for debugging)
+        try {
+            const sinks = execSync('pactl list short sinks').toString();
+            log('Available sinks: ' + sinks.trim(), 'DEBUG');
+        } catch (e) {
+            log('Could not list sinks', 'WARN');
+        }
+        
         log('PulseAudio VirtualSink initialized.', 'SUCCESS');
         
     } catch (e) {
-        log(`PulseAudio setup failed: ${e.message}`, 'WARN');
+        log(`PulseAudio setup failed: ${e.message}`, 'ERROR');
     }
 
+    // Now start Xvfb
     xvfbProcess = spawn('Xvfb', [DISPLAY_NUM, '-screen', '0', `${SCREEN_WIDTH}x${SCREEN_HEIGHT}x24`]);
     
-    xvfbProcess.stderr.on('data', (data) => {
-        // Xvfb often outputs to stderr for info, so just debug log
-        // log(`Xvfb: ${data}`, 'DEBUG');
-    });
-
+    xvfbProcess.on('error', (err) => log(`Xvfb error: ${err.message}`, 'ERROR'));
+    
     // Give Xvfb a moment to start
     await new Promise(resolve => setTimeout(resolve, 2000));
+    log('Xvfb started on display ' + DISPLAY_NUM, 'SUCCESS');
 }
 
 async function startBrowser() {
@@ -91,8 +127,8 @@ async function startBrowser() {
             '--disable-setuid-sandbox',
             '--display=' + DISPLAY_NUM,
             '--incognito',
-            '--kiosk', // Fullscreen mode without any browser UI (no tabs, no address bar)
-            '--disable-infobars', // Hides the "Chrome is being controlled..." message
+            '--kiosk',
+            '--disable-infobars',
             '--window-size=' + SCREEN_WIDTH + ',' + SCREEN_HEIGHT,
             '--autoplay-policy=no-user-gesture-required',
             '--disable-gpu',
@@ -107,85 +143,82 @@ async function startBrowser() {
     await page.setCacheEnabled(false);
     
     // Spoof User Agent to look like a standard Windows PC
-    // This often forces websites to serve standard MP4/H.264 video instead of weird formats
     await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
 
-    await page.setViewport({ width: SCREEN_WIDTH, height: SCREEN_HEIGHT });
     await page.setViewport({ width: SCREEN_WIDTH, height: SCREEN_HEIGHT });
     
     // Go to the URL
     await page.goto(DASHBOARD_URL, { waitUntil: 'networkidle2' });
     log('Page loaded.', 'SUCCESS');
 
-    // Click on the center of the screen to ensure focus and trigger audio if needed
+    // Wait a bit for any videos to initialize, then click to trigger audio
+    await new Promise(r => setTimeout(r, 2000));
+    
     try {
         await page.mouse.click(SCREEN_WIDTH / 2, SCREEN_HEIGHT / 2);
-        log('Clicked center screen to focus/unmute.', 'INFO');
+        log('Clicked center screen to trigger audio.', 'INFO');
     } catch (e) {
         log('Click failed: ' + e.message, 'WARN');
     }
     
-    // Aggressive CSS Injection to fix layout
+    // CSS to hide scrollbars
     await page.addStyleTag({ content: `
         body { 
             overflow: hidden !important;
             margin: 0 !important;
             padding: 0 !important;
-            /* Zoom in slightly to cut off edges if needed */
-            transform: scale(1.02);
-            transform-origin: center top;
         }
-        /* Hide scrollbars completely */
         ::-webkit-scrollbar { 
             display: none !important; 
         }
     `});
 
     // Scroll down 
-    await page.evaluate(() => {
-        window.scrollBy(0, 150);
-    });
-    log('Scrolled down to relevant content.', 'INFO');
+    await page.evaluate((scrollAmount) => {
+        window.scrollBy(0, scrollAmount);
+    }, SCROLL_DOWN);
+    log(`Scrolled down ${SCROLL_DOWN}px.`, 'INFO');
 }
 
 function startStream() {
     log('Starting FFmpeg stream...', 'INFO');
     log(`Source: X11 Display ${DISPLAY_NUM}`);
     log(`Target: ${RTMP_URL} (Key hidden)`);
+    log(`Crop: top=${CROP_TOP}px, left=${CROP_LEFT}px`);
+
+    // Calculate crop dimensions
+    const cropWidth = SCREEN_WIDTH - CROP_LEFT;
+    const cropHeight = SCREEN_HEIGHT - CROP_TOP;
+    const cropFilter = `crop=${cropWidth}:${cropHeight}:${CROP_LEFT}:${CROP_TOP},scale=${SCREEN_WIDTH}:${SCREEN_HEIGHT}`;
 
     ffmpegCommand = ffmpeg()
-        // Input: Grab X11 display
+        // Video Input: X11 display
         .input(DISPLAY_NUM)
         .inputFormat('x11grab')
         .inputOptions([
             `-video_size ${SCREEN_WIDTH}x${SCREEN_HEIGHT}`,
             '-framerate 30',
-            '-draw_mouse 0' // Hide mouse cursor
+            '-draw_mouse 0'
         ])
-        // Use video filter to crop out the browser UI (URL bar, tabs)
-        // Crop width=1280, height=590 (remove top 130px), start at x=0, y=130
-        .complexFilter([
-            `crop=w=${SCREEN_WIDTH}:h=${SCREEN_HEIGHT - 130}:x=0:y=130[cropped]`,
-            `[cropped]scale=${SCREEN_WIDTH}:${SCREEN_HEIGHT}[outv]`
-        ], ['outv'])
         
-        // Input: Grab PulseAudio monitor source
-        // We use the monitor of our virtual sink explicitly
-        .input('VirtualSink.monitor') 
+        // Audio Input: PulseAudio VirtualSink monitor
+        .input('VirtualSink.monitor')
         .inputFormat('pulse')
         
-        // Output options
+        // Output options - use -vf for video filter (preserves audio stream!)
         .outputOptions([
+            '-vf', cropFilter,           // Video filter for cropping (does NOT affect audio)
             '-c:v', 'libx264',
-            '-preset', 'veryfast', // 'ultrafast' is faster but uses more bandwidth. 'veryfast' is good balance.
-            '-tune', 'zerolatency', // Optimize for low latency streaming
-            '-maxrate', '2500k',  // Lower bitrate slightly to ensure stability
+            '-preset', 'veryfast',
+            '-tune', 'zerolatency',
+            '-maxrate', '2500k',
             '-bufsize', '5000k',
             '-pix_fmt', 'yuv420p',
-            '-g', '60', // Keyframe interval (2s at 30fps)
-            '-c:a', 'aac',
-            '-b:a', '128k',
-            '-ar', '44100',
+            '-g', '60',
+            '-c:a', 'aac',               // Audio codec
+            '-b:a', '128k',              // Audio bitrate
+            '-ar', '44100',              // Audio sample rate
+            '-ac', '2',                  // Audio channels (stereo)
             '-f', 'flv'
         ])
         .output(FULL_RTMP_URL)
@@ -193,6 +226,12 @@ function startStream() {
         .on('start', (cmd) => {
             log('Streaming started!', 'SUCCESS');
             log(`Command: ${cmd}`, 'DEBUG');
+        })
+        .on('stderr', (stderrLine) => {
+            // Log FFmpeg output for debugging audio issues
+            if (stderrLine.includes('audio') || stderrLine.includes('pulse')) {
+                log(`FFmpeg: ${stderrLine}`, 'DEBUG');
+            }
         })
         .on('error', (err) => {
             log(`Stream error: ${err.message}`, 'ERROR');
@@ -209,20 +248,14 @@ function startStream() {
 function scheduleReconnect() {
     log(`Restarting streaming components in ${RECONNECT_DELAY/1000}s...`, 'INFO');
     
-    // Cleanup
     if (ffmpegCommand) {
         try { ffmpegCommand.kill(); } catch (e) {}
         ffmpegCommand = null;
     }
     
-    // We usually keep the browser running if just the stream dropped,
-    // but if the browser crashed we might want to restart everything.
-    // For simplicity, let's keep the browser open and just restart ffmpeg
-    // unless the browser is disconnected.
-    
     if (browser && !browser.isConnected()) {
         log('Browser disconnected. Full restart.', 'WARN');
-        process.exit(1); // Let Docker/Supervisor restart the process
+        process.exit(1);
     }
 
     setTimeout(startStream, RECONNECT_DELAY);
@@ -230,9 +263,7 @@ function scheduleReconnect() {
 
 async function main() {
     try {
-        // Set DISPLAY env var for this process
         process.env.DISPLAY = DISPLAY_NUM;
-
         await startXvfb();
         await startBrowser();
         startStream();
@@ -242,7 +273,6 @@ async function main() {
     }
 }
 
-// Cleanup on exit
 process.on('SIGINT', async () => {
     log('Stopping...', 'INFO');
     if (ffmpegCommand) try { ffmpegCommand.kill(); } catch (e) {}
