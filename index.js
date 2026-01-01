@@ -63,6 +63,9 @@ async function startXvfb() {
         
         // Set as default
         spawn('pactl', ['set-default-sink', 'VirtualSink']);
+        // Force Unmute & 100% Volume
+        spawn('pactl', ['set-sink-mute', 'VirtualSink', '0']);
+        spawn('pactl', ['set-sink-volume', 'VirtualSink', '100%']);
         log('PulseAudio VirtualSink initialized.', 'SUCCESS');
         
     } catch (e) {
@@ -99,7 +102,9 @@ async function startBrowser() {
             '--disable-software-rasterizer',
             '--disable-dev-shm-usage',
             '--disable-accelerated-2d-canvas',
-            '--disable-accelerated-video-decode'
+            '--disable-accelerated-video-decode',
+            '--force-wave-audio', // Force audio device
+            '--autoplay-policy=no-user-gesture-required',
         ]
     });
 
@@ -132,8 +137,6 @@ async function startBrowser() {
             overflow: hidden !important;
             margin: 0 !important;
             padding: 0 !important;
-            /* Zoom out slightly (90%) to fit more content */
-            transform: scale(0.9);
             transform-origin: center top;
         }
         /* Hide scrollbars completely */
