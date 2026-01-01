@@ -147,7 +147,7 @@ async function startBrowser() {
 
     // Scroll down 
     await page.evaluate(() => {
-        window.scrollBy(0, 250);
+        window.scrollBy(0, 300);
     });
     log('Scrolled down to relevant content.', 'INFO');
 }
@@ -167,9 +167,9 @@ function startStream() {
             '-draw_mouse 0' // Hide mouse cursor
         ])
         // Use video filter to crop out the browser UI (URL bar, tabs)
-        // Crop width=1280, height=590 (remove top 130px), start at x=0, y=130
+        // Crop width=1280, height=570 (remove top 150px), start at x=0, y=150
         .complexFilter([
-            `crop=w=${SCREEN_WIDTH}:h=${SCREEN_HEIGHT - 130}:x=0:y=130[cropped]`,
+            `crop=w=${SCREEN_WIDTH}:h=${SCREEN_HEIGHT - 150}:x=0:y=150[cropped]`,
             `[cropped]scale=${SCREEN_WIDTH}:${SCREEN_HEIGHT}[outv]`
         ], ['outv'])
         
