@@ -103,7 +103,6 @@ async function startBrowser() {
             '--disable-dev-shm-usage',
             '--disable-accelerated-2d-canvas',
             '--disable-accelerated-video-decode',
-            '--force-wave-audio', // Force audio device
             '--autoplay-policy=no-user-gesture-required',
         ]
     });
@@ -147,7 +146,7 @@ async function startBrowser() {
 
     // Scroll down 
     await page.evaluate(() => {
-        window.scrollBy(0, 300);
+        window.scrollBy(0, 350);
     });
     log('Scrolled down to relevant content.', 'INFO');
 }
@@ -166,10 +165,10 @@ function startStream() {
             '-framerate 30',
             '-draw_mouse 0' // Hide mouse cursor
         ])
-        // Use video filter to crop out the browser UI (URL bar, tabs)
-        // Crop width=1280, height=570 (remove top 150px), start at x=0, y=150
+        // Use video filter to crop out the browser UI (URL bar, tabs) + Left white line
+        // Crop width=1270 (cut 10px from left), height=550 (remove top 170px), start at x=10, y=170
         .complexFilter([
-            `crop=w=${SCREEN_WIDTH}:h=${SCREEN_HEIGHT - 150}:x=0:y=150[cropped]`,
+            `crop=w=${SCREEN_WIDTH - 10}:h=${SCREEN_HEIGHT - 170}:x=10:y=170[cropped]`,
             `[cropped]scale=${SCREEN_WIDTH}:${SCREEN_HEIGHT}[outv]`
         ], ['outv'])
         
