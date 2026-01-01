@@ -40,6 +40,7 @@ function log(message, type = 'INFO') {
 
 async function startXvfb() {
     log('Starting Xvfb...', 'INFO');
+    // Start Xvfb on display :99 with 1280x720 resolution and 24-bit color
     // Start PulseAudio
     log('Starting PulseAudio...', 'INFO');
     try {
@@ -62,11 +63,6 @@ async function startXvfb() {
         
         // Set as default
         spawn('pactl', ['set-default-sink', 'VirtualSink']);
-        
-        // Force Unmute & 100% Volume (Added safety from today's debugging)
-        spawn('pactl', ['set-sink-mute', 'VirtualSink', '0']);
-        spawn('pactl', ['set-sink-volume', 'VirtualSink', '100%']);
-        
         log('PulseAudio VirtualSink initialized.', 'SUCCESS');
         
     } catch (e) {
@@ -87,7 +83,6 @@ async function startXvfb() {
 async function startBrowser() {
     log(`Launching Puppeteer for ${DASHBOARD_URL}...`, 'INFO');
     
-    // RESTORED: The exact arguments from old_index.js that worked
     browser = await puppeteer.launch({
         headless: false,
         defaultViewport: null,
@@ -96,8 +91,8 @@ async function startBrowser() {
             '--disable-setuid-sandbox',
             '--display=' + DISPLAY_NUM,
             '--incognito',
-            '--start-fullscreen', // Back to fullscreen (kiosk might have been issues)
-            '--disable-infobars', 
+            '--kiosk', // Fullscreen mode without any browser UI (no tabs, no address bar)
+            '--disable-infobars', // Hides the "Chrome is being controlled..." message
             '--window-size=' + SCREEN_WIDTH + ',' + SCREEN_HEIGHT,
             '--autoplay-policy=no-user-gesture-required',
             '--disable-gpu',
@@ -105,47 +100,50 @@ async function startBrowser() {
             '--disable-dev-shm-usage',
             '--disable-accelerated-2d-canvas',
             '--disable-accelerated-video-decode'
-            // REMOVED: --app, --force-wave-audio (these were new additions that likely broke it)
         ]
     });
 
     const page = await browser.newPage();
     await page.setCacheEnabled(false);
     
-    // RESTORED: User Agent Spoofing (this was in the working version!)
+    // Spoof User Agent to look like a standard Windows PC
+    // This often forces websites to serve standard MP4/H.264 video instead of weird formats
     await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
 
+    await page.setViewport({ width: SCREEN_WIDTH, height: SCREEN_HEIGHT });
     await page.setViewport({ width: SCREEN_WIDTH, height: SCREEN_HEIGHT });
     
     // Go to the URL
     await page.goto(DASHBOARD_URL, { waitUntil: 'networkidle2' });
     log('Page loaded.', 'SUCCESS');
 
-    // RESTORED: Center click (just to be safe for audio focus)
+    // Click on the center of the screen to ensure focus and trigger audio if needed
     try {
-        await new Promise(r => setTimeout(r, 2000)); 
         await page.mouse.click(SCREEN_WIDTH / 2, SCREEN_HEIGHT / 2);
-        log('Clicked center screen to trigger audio.', 'INFO');
+        log('Clicked center screen to focus/unmute.', 'INFO');
     } catch (e) {
         log('Click failed: ' + e.message, 'WARN');
     }
     
-    // RESTORED: Aggressive CSS (it's good for hiding scrollbars)
+    // Aggressive CSS Injection to fix layout
     await page.addStyleTag({ content: `
         body { 
             overflow: hidden !important;
             margin: 0 !important;
             padding: 0 !important;
+            /* Zoom in slightly to cut off edges if needed */
+            transform: scale(1.02);
             transform-origin: center top;
         }
+        /* Hide scrollbars completely */
         ::-webkit-scrollbar { 
             display: none !important; 
         }
     `});
 
-    // UPDATED: The new scroll value you wanted (360px)
+    // Scroll down 
     await page.evaluate(() => {
-        window.scrollBy(0, 360);
+        window.scrollBy(0, 150);
     });
     log('Scrolled down to relevant content.', 'INFO');
 }
@@ -164,26 +162,27 @@ function startStream() {
             '-framerate 30',
             '-draw_mouse 0' // Hide mouse cursor
         ])
-        
-        // UPDATED: The new crop values you wanted (180px top, 10px left)
+        // Use video filter to crop out the browser UI (URL bar, tabs)
+        // Crop width=1280, height=590 (remove top 130px), start at x=0, y=130
         .complexFilter([
-            `crop=w=${SCREEN_WIDTH - 10}:h=${SCREEN_HEIGHT - 180}:x=10:y=180[cropped]`,
+            `crop=w=${SCREEN_WIDTH}:h=${SCREEN_HEIGHT - 130}:x=0:y=130[cropped]`,
             `[cropped]scale=${SCREEN_WIDTH}:${SCREEN_HEIGHT}[outv]`
         ], ['outv'])
         
-        // Input: Grab PulseAudio monitor source (EXACTLY AS IN OLD_INDEX.JS)
+        // Input: Grab PulseAudio monitor source
+        // We use the monitor of our virtual sink explicitly
         .input('VirtualSink.monitor') 
         .inputFormat('pulse')
         
         // Output options
         .outputOptions([
             '-c:v', 'libx264',
-            '-preset', 'veryfast',
-            '-tune', 'zerolatency',
-            '-maxrate', '2500k', 
+            '-preset', 'veryfast', // 'ultrafast' is faster but uses more bandwidth. 'veryfast' is good balance.
+            '-tune', 'zerolatency', // Optimize for low latency streaming
+            '-maxrate', '2500k',  // Lower bitrate slightly to ensure stability
             '-bufsize', '5000k',
             '-pix_fmt', 'yuv420p',
-            '-g', '60',
+            '-g', '60', // Keyframe interval (2s at 30fps)
             '-c:a', 'aac',
             '-b:a', '128k',
             '-ar', '44100',
@@ -210,14 +209,20 @@ function startStream() {
 function scheduleReconnect() {
     log(`Restarting streaming components in ${RECONNECT_DELAY/1000}s...`, 'INFO');
     
+    // Cleanup
     if (ffmpegCommand) {
         try { ffmpegCommand.kill(); } catch (e) {}
         ffmpegCommand = null;
     }
     
+    // We usually keep the browser running if just the stream dropped,
+    // but if the browser crashed we might want to restart everything.
+    // For simplicity, let's keep the browser open and just restart ffmpeg
+    // unless the browser is disconnected.
+    
     if (browser && !browser.isConnected()) {
         log('Browser disconnected. Full restart.', 'WARN');
-        process.exit(1); 
+        process.exit(1); // Let Docker/Supervisor restart the process
     }
 
     setTimeout(startStream, RECONNECT_DELAY);
@@ -225,7 +230,9 @@ function scheduleReconnect() {
 
 async function main() {
     try {
+        // Set DISPLAY env var for this process
         process.env.DISPLAY = DISPLAY_NUM;
+
         await startXvfb();
         await startBrowser();
         startStream();
@@ -235,6 +242,7 @@ async function main() {
     }
 }
 
+// Cleanup on exit
 process.on('SIGINT', async () => {
     log('Stopping...', 'INFO');
     if (ffmpegCommand) try { ffmpegCommand.kill(); } catch (e) {}
