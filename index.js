@@ -43,6 +43,7 @@ async function startXvfb() {
     // Start PulseAudio
     log('Starting PulseAudio...', 'INFO');
     try {
+        // Kill existing and start with flags for root/docker
         spawn('pulseaudio', ['-k']);
         spawn('pulseaudio', [
             '-D', 
@@ -61,13 +62,13 @@ async function startXvfb() {
         
         // Set as default
         spawn('pactl', ['set-default-sink', 'VirtualSink']);
-        // Force Unmute & 100% Volume
+        
+        // Force Unmute & 100% Volume (Added safety from today's debugging)
         spawn('pactl', ['set-sink-mute', 'VirtualSink', '0']);
         spawn('pactl', ['set-sink-volume', 'VirtualSink', '100%']);
-        // Force default sink volume too just in case
-        spawn('pactl', ['set-sink-volume', '@DEFAULT_SINK@', '100%']);
         
         log('PulseAudio VirtualSink initialized.', 'SUCCESS');
+        
     } catch (e) {
         log(`PulseAudio setup failed: ${e.message}`, 'WARN');
     }
@@ -76,48 +77,51 @@ async function startXvfb() {
     
     xvfbProcess.stderr.on('data', (data) => {
         // Xvfb often outputs to stderr for info, so just debug log
+        // log(`Xvfb: ${data}`, 'DEBUG');
     });
 
+    // Give Xvfb a moment to start
     await new Promise(resolve => setTimeout(resolve, 2000));
 }
 
 async function startBrowser() {
     log(`Launching Puppeteer for ${DASHBOARD_URL}...`, 'INFO');
     
+    // RESTORED: The exact arguments from old_index.js that worked
     browser = await puppeteer.launch({
         headless: false,
         defaultViewport: null,
         args: [
             '--no-sandbox',
             '--disable-setuid-sandbox',
-            '--app=' + DASHBOARD_URL, // Use App mode to remove UI
-            '--window-size=' + SCREEN_WIDTH + ',' + SCREEN_HEIGHT,
-            '--start-fullscreen',
-            '--autoplay-policy=no-user-gesture-required',
             '--display=' + DISPLAY_NUM,
             '--incognito',
+            '--start-fullscreen', // Back to fullscreen (kiosk might have been issues)
+            '--disable-infobars', 
+            '--window-size=' + SCREEN_WIDTH + ',' + SCREEN_HEIGHT,
+            '--autoplay-policy=no-user-gesture-required',
             '--disable-gpu',
+            '--disable-software-rasterizer',
             '--disable-dev-shm-usage',
+            '--disable-accelerated-2d-canvas',
             '--disable-accelerated-video-decode'
+            // REMOVED: --app, --force-wave-audio (these were new additions that likely broke it)
         ]
     });
 
-    const pages = await browser.pages();
-    const page = pages.length > 0 ? pages[0] : await browser.newPage();
-    
-    // Capture browser console logs to debug audio issues
-    page.on('console', msg => log('BROWSER LOG: ' + msg.text(), 'DEBUG'));
-    
+    const page = await browser.newPage();
     await page.setCacheEnabled(false);
     
-    // No User Agent spoofing (back to Linux default for stability)
+    // RESTORED: User Agent Spoofing (this was in the working version!)
+    await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
 
     await page.setViewport({ width: SCREEN_WIDTH, height: SCREEN_HEIGHT });
     
+    // Go to the URL
     await page.goto(DASHBOARD_URL, { waitUntil: 'networkidle2' });
     log('Page loaded.', 'SUCCESS');
 
-    // CLICK to ensure audio starts
+    // RESTORED: Center click (just to be safe for audio focus)
     try {
         await new Promise(r => setTimeout(r, 2000)); 
         await page.mouse.click(SCREEN_WIDTH / 2, SCREEN_HEIGHT / 2);
@@ -126,7 +130,7 @@ async function startBrowser() {
         log('Click failed: ' + e.message, 'WARN');
     }
     
-    // Aggressive CSS Injection
+    // RESTORED: Aggressive CSS (it's good for hiding scrollbars)
     await page.addStyleTag({ content: `
         body { 
             overflow: hidden !important;
@@ -139,9 +143,9 @@ async function startBrowser() {
         }
     `});
 
-    // Scroll down 
+    // UPDATED: The new scroll value you wanted (360px)
     await page.evaluate(() => {
-        window.scrollBy(0, 360); // 10px more scroll
+        window.scrollBy(0, 360);
     });
     log('Scrolled down to relevant content.', 'INFO');
 }
@@ -158,16 +162,16 @@ function startStream() {
         .inputOptions([
             `-video_size ${SCREEN_WIDTH}x${SCREEN_HEIGHT}`,
             '-framerate 30',
-            '-draw_mouse 0'
+            '-draw_mouse 0' // Hide mouse cursor
         ])
-        // Use video filter to crop out the browser UI + Left white line
-        // Crop width=1270 (cut 10px from left), height=540 (remove top 180px), start at x=10, y=180
+        
+        // UPDATED: The new crop values you wanted (180px top, 10px left)
         .complexFilter([
             `crop=w=${SCREEN_WIDTH - 10}:h=${SCREEN_HEIGHT - 180}:x=10:y=180[cropped]`,
             `[cropped]scale=${SCREEN_WIDTH}:${SCREEN_HEIGHT}[outv]`
         ], ['outv'])
         
-        // Input: Grab PulseAudio monitor source
+        // Input: Grab PulseAudio monitor source (EXACTLY AS IN OLD_INDEX.JS)
         .input('VirtualSink.monitor') 
         .inputFormat('pulse')
         
@@ -176,7 +180,7 @@ function startStream() {
             '-c:v', 'libx264',
             '-preset', 'veryfast',
             '-tune', 'zerolatency',
-            '-maxrate', '2500k',
+            '-maxrate', '2500k', 
             '-bufsize', '5000k',
             '-pix_fmt', 'yuv420p',
             '-g', '60',
@@ -213,7 +217,7 @@ function scheduleReconnect() {
     
     if (browser && !browser.isConnected()) {
         log('Browser disconnected. Full restart.', 'WARN');
-        process.exit(1);
+        process.exit(1); 
     }
 
     setTimeout(startStream, RECONNECT_DELAY);
