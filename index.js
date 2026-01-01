@@ -30,9 +30,9 @@ const SCREEN_HEIGHT = 900;   // 16:9 aspect ratio
 const DISPLAY_NUM = ':99';
 
 // Crop settings (adjust these as needed)
-const CROP_TOP = 150;     // Pixels to remove from top (was 180, reduced to show more)
+const CROP_TOP = 150;     // Pixels to remove from top
 const CROP_BOTTOM = 80;   // Pixels to remove from bottom
-const CROP_LEFT = 15;     // Pixels to remove from left
+const CROP_LEFT = 25;     // Pixels to remove from left (was 15, increased to remove white line)
 const SCROLL_DOWN = 210;  // Pixels to scroll down on page
 
 let ffmpegCommand = null;
