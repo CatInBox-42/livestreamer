@@ -31,7 +31,7 @@ const DISPLAY_NUM = ':99';
 
 // Crop settings (adjust these as needed)
 const CROP_TOP = 180;    // Pixels to remove from top
-const CROP_LEFT = 10;    // Pixels to remove from left
+const CROP_LEFT = 20;    // Pixels to remove from left
 const SCROLL_DOWN = 360; // Pixels to scroll down on page
 
 let ffmpegCommand = null;
@@ -122,6 +122,7 @@ async function startBrowser() {
     browser = await puppeteer.launch({
         headless: false,
         defaultViewport: null,
+        userDataDir: '/tmp/puppeteer_fresh_profile_' + Date.now(), // Fresh profile every time (no cookies/cache)
         args: [
             '--no-sandbox',
             '--disable-setuid-sandbox',
@@ -135,7 +136,11 @@ async function startBrowser() {
             '--disable-software-rasterizer',
             '--disable-dev-shm-usage',
             '--disable-accelerated-2d-canvas',
-            '--disable-accelerated-video-decode'
+            '--disable-accelerated-video-decode',
+            '--disable-extensions',           // No extensions
+            '--disable-default-apps',         // No default apps
+            '--no-first-run',                 // Skip first run wizards
+            '--disable-background-networking' // Disable background stuff
         ]
     });
 
