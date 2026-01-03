@@ -209,14 +209,18 @@ function startStream() {
         .input(DISPLAY_NUM)
         .inputFormat('x11grab')
         .inputOptions([
+            '-thread_queue_size', '1024',  // ADDED: Prevent video queue blocking
             `-video_size ${SCREEN_WIDTH}x${SCREEN_HEIGHT}`,
-            '-framerate 24',             // REDUCED: from 30 to 24 fps (less CPU)
+            '-framerate 24',
             '-draw_mouse 0'
         ])
         
         // Audio Input: PulseAudio VirtualSink monitor
         .input('VirtualSink.monitor')
         .inputFormat('pulse')
+        .inputOptions([
+            '-thread_queue_size', '1024'   // ADDED: Prevent audio queue blocking (was 8, now 1024)
+        ])
         
         // Output options - OPTIMIZED FOR LOW CPU (small VPS)
         .outputOptions([
