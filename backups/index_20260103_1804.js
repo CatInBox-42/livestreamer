@@ -210,7 +210,7 @@ function startStream() {
         .inputFormat('x11grab')
         .inputOptions([
             `-video_size ${SCREEN_WIDTH}x${SCREEN_HEIGHT}`,
-            '-framerate 24',             // REDUCED: from 30 to 24 fps (less CPU)
+            '-framerate 30',
             '-draw_mouse 0'
         ])
         
@@ -218,20 +218,18 @@ function startStream() {
         .input('VirtualSink.monitor')
         .inputFormat('pulse')
         
-        // Output options - OPTIMIZED FOR LOW CPU (small VPS)
+        // Output options - use -vf for video filter (preserves audio stream!)
         .outputOptions([
             '-vf', cropFilter,           // Video filter for cropping (does NOT affect audio)
             '-c:v', 'libx264',
-            '-preset', 'ultrafast',      // CHANGED: ultrafast uses least CPU
+            '-preset', 'veryfast',
             '-tune', 'zerolatency',
-            '-crf', '28',                // ADDED: Quality-based encoding (28 = decent quality, less CPU)
-            '-maxrate', '1500k',         // REDUCED: from 2500k to 1500k
-            '-bufsize', '3000k',         // REDUCED: from 5000k to 3000k
+            '-maxrate', '2500k',
+            '-bufsize', '5000k',
             '-pix_fmt', 'yuv420p',
             '-g', '60',
-            '-threads', '1',             // ADDED: Limit threads for small VPS
             '-c:a', 'aac',               // Audio codec
-            '-b:a', '96k',               // REDUCED: from 128k to 96k
+            '-b:a', '128k',              // Audio bitrate
             '-ar', '44100',              // Audio sample rate
             '-ac', '2',                  // Audio channels (stereo)
             '-f', 'flv'
