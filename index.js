@@ -209,9 +209,9 @@ function startStream() {
         .input(DISPLAY_NUM)
         .inputFormat('x11grab')
         .inputOptions([
-            '-thread_queue_size', '1024',  // ADDED: Prevent video queue blocking
+            '-thread_queue_size', '1024',  // Prevent video queue blocking
             `-video_size ${SCREEN_WIDTH}x${SCREEN_HEIGHT}`,
-            '-framerate 24',
+            '-framerate 30',               // Back to 30 fps
             '-draw_mouse 0'
         ])
         
@@ -222,20 +222,18 @@ function startStream() {
             '-thread_queue_size', '1024'   // ADDED: Prevent audio queue blocking (was 8, now 1024)
         ])
         
-        // Output options - OPTIMIZED FOR LOW CPU (small VPS)
+        // Output options
         .outputOptions([
             '-vf', cropFilter,           // Video filter for cropping (does NOT affect audio)
             '-c:v', 'libx264',
-            '-preset', 'ultrafast',      // CHANGED: ultrafast uses least CPU
+            '-preset', 'veryfast',       // Good balance quality/speed
             '-tune', 'zerolatency',
-            '-crf', '28',                // ADDED: Quality-based encoding (28 = decent quality, less CPU)
-            '-maxrate', '1500k',         // REDUCED: from 2500k to 1500k
-            '-bufsize', '3000k',         // REDUCED: from 5000k to 3000k
+            '-maxrate', '2500k',         // Original bitrate
+            '-bufsize', '5000k',         // Original buffer
             '-pix_fmt', 'yuv420p',
             '-g', '60',
-            '-threads', '1',             // ADDED: Limit threads for small VPS
             '-c:a', 'aac',               // Audio codec
-            '-b:a', '96k',               // REDUCED: from 128k to 96k
+            '-b:a', '128k',              // Original audio bitrate
             '-ar', '44100',              // Audio sample rate
             '-ac', '2',                  // Audio channels (stereo)
             '-f', 'flv'
